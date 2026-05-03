@@ -543,8 +543,12 @@ window._fbConnectReady = function(ok) {
 function pushState() {
   const b=document.getElementById('sync-bar');
   b.classList.add('on'); setTimeout(()=>b.classList.remove('on'),700);
-  if (fbOk) { _ignoreNext=true; window._fbSet(JSON.parse(JSON.stringify(S))); }
-  renderAll();
+  if (fbOk) {
+    // Firebase에 저장 (다른 기기 동기화용)
+    window._fbSet(JSON.parse(JSON.stringify(S)));
+    // ★ _ignoreNext 제거 — 로컬은 바로 renderAll, 다른 기기는 리스너로 수신
+  }
+  renderAll(); // 항상 즉시 로컬 UI 업데이트
 }
 
 // ─── PAGES ───
