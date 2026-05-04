@@ -7,44 +7,30 @@
 <title>STEP — 코트 매칭</title>
 <link href="https://fonts.googleapis.com/css2?family=Gmarket+Sans:wght@300;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 
-<!-- Firebase SDK (ES Module) -->
+<!-- Firebase SDK -->
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, set, onValue }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCUeRduirTQ_9LhsSz-r7fsMfsSqm4PBh4",
-  authDomain: "step-badminton.firebaseapp.com",
-  databaseURL: "https://step-badminton-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "step-badminton",
-  storageBucket: "step-badminton.firebasestorage.app",
-  messagingSenderId: "744276641117",
-  appId: "1:744276641117:web:d28b78e8b0d965599e54b4",
-  measurementId: "G-KVFFDEFWHL"
-};
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
+<script>
+// Firebase 초기화 (compat 버전 — module 타이밍 문제 없음)
 try {
-  const app = initializeApp(firebaseConfig);
-  const db  = getDatabase(app);
-  window._fbSet    = (val) => set(ref(db, 'shuttleState'), val);
-  window._fbListen = (cb)  => onValue(ref(db, 'shuttleState'), snap => cb(snap.exists() ? snap.val() : null));
+  firebase.initializeApp({
+    apiKey: "AIzaSyCUeRduirTQ_9LhsSz-r7fsMfsSqm4PBh4",
+    authDomain: "step-badminton.firebaseapp.com",
+    databaseURL: "https://step-badminton-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "step-badminton",
+    storageBucket: "step-badminton.firebasestorage.app",
+    messagingSenderId: "744276641117",
+    appId: "1:744276641117:web:d28b78e8b0d965599e54b4"
+  });
+  window._db = firebase.database();
   window._fbOk = true;
 } catch(e) {
-  console.warn('Firebase 초기화 실패:', e.message);
+  console.warn('Firebase 실패:', e.message);
   window._fbOk = false;
 }
-
-// 메인 스크립트가 준비될 때까지 폴링 후 연결
-function tryConnect() {
-  if (typeof window._fbConnectReady === 'function') {
-    window._fbConnectReady(window._fbOk);
-  } else {
-    setTimeout(tryConnect, 50);
-  }
-}
-tryConnect();
 </script>
 
 <style>
@@ -514,7 +500,7 @@ let S={
   history:[],
 };
 
-let fbOk=false, qidSeq=1, pidSeq=9;
+let qidSeq=1, pidSeq=9;
 let selLv='C', selGender='M', editPid=null;
 let matchCourtPref=null, selMatchType='MD';
 let timers={}, tempCourts=[];
@@ -522,47 +508,42 @@ let _ignoreNext=false;
 let editQueueId=null, eqMatchType='MD';
 
 // ─── FIREBASE 연결 ───
-window._fbConnectReady = function(ok) {
-  fbOk = ok;
+let fbOk = false;
+(function initFb() {
+  if (!window._fbOk || !window._db) return;
+  fbOk = true;
   const conn = document.getElementById('conn');
-  if (fbOk) {
-    conn.className = 'ok';
-    conn.textContent = '🟢 실시간 연결됨';
-    let isFirstLoad = true;
-    window._fbListen((val) => {
-      // 첫 로드시에만 Firebase 데이터로 덮어쓰기 (이후는 내가 pushState로 씀)
-      if (isFirstLoad) {
-        isFirstLoad = false;
-        if (val) {
-          S = JSON.parse(JSON.stringify(val));
-          renderAll();
-        } else {
-          // DB가 비어있으면 현재 로컬 상태를 Firebase에 저장
-          window._fbSet(JSON.parse(JSON.stringify(S)));
-        }
-        return;
+  conn.className = 'ok';
+  conn.textContent = '🟢 실시간 연결됨';
+  let firstLoad = true;
+  window._db.ref('shuttleState').on('value', snap => {
+    if (firstLoad) {
+      firstLoad = false;
+      if (snap.exists()) {
+        S = snap.val();
+        // opponents 배열 보정
+        S.players = S.players.map(p => ({...p, opponents: p.opponents || []}));
+      } else {
+        window._db.ref('shuttleState').set(JSON.parse(JSON.stringify(S)));
       }
-      // 첫 로드 이후: 다른 기기에서 변경된 경우만 반영
-      // (내가 쓴 건 pushState에서 이미 로컬 렌더 완료)
-      if (val) {
-        S = JSON.parse(JSON.stringify(val));
-        renderAll();
-      }
-    });
-  } else {
-    conn.className = 'local';
-    conn.textContent = '⚠ 로컬 모드 (Firebase 미연결)';
-  }
-};
+      renderAll();
+      return;
+    }
+    // 다른 기기 변경 수신
+    if (snap.exists()) {
+      S = snap.val();
+      S.players = S.players.map(p => ({...p, opponents: p.opponents || []}));
+      renderAll();
+    }
+  });
+})();
 
 function pushState() {
   const b = document.getElementById('sync-bar');
   b.classList.add('on'); setTimeout(() => b.classList.remove('on'), 700);
-  // ★ 로컬 UI는 항상 즉시 업데이트 (Firebase 연결 여부 무관)
-  renderAll();
-  // Firebase에는 비동기로 저장 (실패해도 로컬은 이미 렌더됨)
-  if (fbOk && window._fbSet) {
-    try { window._fbSet(JSON.parse(JSON.stringify(S))); } catch(e) {}
+  renderAll(); // 항상 즉시 로컬 렌더
+  if (fbOk && window._db) {
+    window._db.ref('shuttleState').set(JSON.parse(JSON.stringify(S)));
   }
 }
 
