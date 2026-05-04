@@ -330,7 +330,10 @@ main{max-width:1160px;margin:0 auto;padding:18px 14px;}
 <!-- HISTORY -->
 
 <div class="page" id="page-history">
-  <div class="sh" style="margin-bottom:12px;">오늘의 경기 기록</div>
+  <div class="sh" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+    <span>오늘의 경기 기록</span>
+    <button class="btn-xs bxr" onclick="confirmDeleteAllHistory()" style="padding:5px 10px;font-size:.75rem;">전체 삭제</button>
+  </div>
   <div class="hl" id="hist-list">
     <div style="text-align:center;padding:28px;color:var(--muted);">아직 완료된 경기가 없습니다.</div>
   </div>
@@ -475,6 +478,37 @@ main{max-width:1160px;margin:0 auto;padding:18px 14px;}
   <div class="mfoot">
     <button class="btn-c" onclick="closeOv('ov-editq')">취소</button>
     <button class="btn-ok" id="eq-save-btn" onclick="saveEditQueue()">저장</button>
+  </div>
+</div>
+</div>
+
+<!-- MODAL: 개별 기록 삭제 확인 -->
+<div class="ov" id="ov-del-hist">
+<div class="modal" style="width:360px;text-align:center;">
+  <div class="mt" style="color:var(--red);">🗑️ 기록 삭제</div>
+  <p style="margin-bottom:15px;font-size:.9rem;color:var(--text);line-height:1.4;">
+    이 경기 기록을 삭제하시겠습니까?<br>
+    <span style="font-size:.8rem;color:var(--muted);">(선수들의 게임 수 및 매칭 데이터가 이전으로 복구됩니다)</span>
+  </p>
+  <input type="hidden" id="del-h-id">
+  <div class="mfoot" style="justify-content:center;">
+    <button class="btn-c" onclick="closeOv('ov-del-hist')">취소</button>
+    <button class="btn-ok" style="background:var(--red);" onclick="executeDeleteHistory()">삭제</button>
+  </div>
+</div>
+</div>
+
+<!-- MODAL: 전체 기록 삭제 확인 -->
+<div class="ov" id="ov-del-all-hist">
+<div class="modal" style="width:360px;text-align:center;">
+  <div class="mt" style="color:var(--red);">⚠️ 전체 기록 삭제</div>
+  <p style="margin-bottom:15px;font-size:.9rem;color:var(--text);line-height:1.4;">
+    오늘의 <strong>모든 경기 기록</strong>을 삭제하시겠습니까?<br>
+    <span style="font-size:.8rem;color:var(--muted);">(모든 선수의 누적 게임 횟수가 0으로 초기화됩니다)</span>
+  </p>
+  <div class="mfoot" style="justify-content:center;">
+    <button class="btn-c" onclick="closeOv('ov-del-all-hist')">취소</button>
+    <button class="btn-ok" style="background:var(--red);" onclick="executeDeleteAllHistory()">전체 삭제</button>
   </div>
 </div>
 </div>
@@ -787,9 +821,12 @@ function finishGame(cid){
     p.lastPlayedTime=Date.now(); 
   });
   S.history.unshift({
-    id:'h'+(S.history.length+1), court:c.name, matchType:c.match.matchType||'MD',
+    id: 'h' + Date.now() + Math.floor(Math.random()*1000), // 기록 삭제용 고유 ID 추가
+    court:c.name, matchType:c.match.matchType||'MD',
     teamA:(teamA||[]).map(id=>getP(id)?.name||'?'),
     teamB:(teamB||[]).map(id=>getP(id)?.name||'?'),
+    teamAIds: teamA || [], // 롤백을 위해 선수 ID도 같이 보관
+    teamBIds: teamB || [],
     time:new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}),
     duration:startTime?Math.floor((Date.now()-startTime)/60000)+'분':'-'
   });
@@ -1224,6 +1261,58 @@ function saveEditQueue(){
   toast('대기열 수정 완료!');closeOv('ov-editq');pushState();
 }
 
+// ─── 기록 삭제 관련 통계 재계산 ───
+function recalcStats() {
+  // 1. 모든 선수의 통계 초기화
+  S.players.forEach(p => { p.games = 0; p.opponents = []; });
+  
+  // 2. 남아있는 기록을 기반으로 데이터 재구성
+  S.history.forEach(h => {
+    // 과거 기록 호환성: teamAIds가 없으면 이름으로 ID 역추적
+    const aIds = h.teamAIds || (h.teamA||[]).map(n => S.players.find(x => x.name === n)?.id).filter(Boolean);
+    const bIds = h.teamBIds || (h.teamB||[]).map(n => S.players.find(x => x.name === n)?.id).filter(Boolean);
+    const all = [...aIds, ...bIds];
+    
+    all.forEach(id => {
+      const p = getP(id);
+      if(p) {
+        p.games++;
+        all.filter(oid => oid !== id).forEach(oid => {
+          if(!p.opponents.includes(oid)) p.opponents.push(oid);
+        });
+      }
+    });
+  });
+}
+
+// ─── HISTORY 삭제 액션 ───
+function confirmDeleteAllHistory() {
+  if(!S.history.length) { toast('삭제할 기록이 없습니다.', true); return; }
+  openOv('ov-del-all-hist');
+}
+
+function executeDeleteAllHistory() {
+  S.history = [];
+  recalcStats();
+  toast('모든 경기 기록이 영구 삭제되었습니다.');
+  closeOv('ov-del-all-hist');
+  pushState();
+}
+
+function deleteHistory(hid) {
+  document.getElementById('del-h-id').value = hid;
+  openOv('ov-del-hist');
+}
+
+function executeDeleteHistory() {
+  const hid = document.getElementById('del-h-id').value;
+  S.history = S.history.filter(h => h.id !== hid);
+  recalcStats(); // 해당 경기를 뺀 나머지로 선수들 데이터 재구성
+  toast('경기 기록이 삭제되었습니다.');
+  closeOv('ov-del-hist');
+  pushState();
+}
+
 function renderHistory(){
   const el=document.getElementById('hist-list');
   if(!S.history.length){el.innerHTML='<div style="text-align:center;padding:26px;color:var(--muted);">아직 완료된 경기가 없습니다.</div>';return;}
@@ -1237,6 +1326,7 @@ function renderHistory(){
       <span style="background:${mtC};color:#fff;font-size:.68rem;padding:2px 8px;border-radius:20px;font-weight:700;">${mtL}</span>
       <span class="hcrt">${h.court}</span>
       <span style="font-size:.72rem;color:var(--muted);margin-left:4px;">${h.time}</span>
+      <button class="cchip-del" style="margin-left:auto; background:#fff0f0; color:var(--red);" onclick="deleteHistory('${h.id}')">✕</button>
     </div>`;
   }).join('');
 }
