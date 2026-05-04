@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -38,10 +39,10 @@ header{background:var(--green);padding:13px 22px;display:flex;align-items:center
 .badge-sess{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);
   color:#fff;padding:4px 12px;border-radius:20px;font-size:.8rem;}
 .btn-cfg{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
-  color:#fff;padding:8px 14px;border-radius:7px;font-size:.85rem;cursor:pointer;
+  color:#fff;padding:6px 13px;border-radius:7px;font-size:.8rem;cursor:pointer;
   font-family:var(--font);}
-.btn-sess{background:var(--yellow);color:#1a2e22;border:none;padding:8px 16px;
-  border-radius:7px;font-family:var(--font);font-weight:700;font-size:.88rem;cursor:pointer;}
+.btn-sess{background:var(--yellow);color:#1a2e22;border:none;padding:7px 15px;
+  border-radius:7px;font-family:var(--font);font-weight:700;font-size:.84rem;cursor:pointer;}
 
 .tabs{background:#fff;border-bottom:2px solid var(--border);display:flex;padding:0 22px;}
 .tab{padding:14px 18px;border:none;background:none;font-family:var(--font);
@@ -118,8 +119,11 @@ main{max-width:1160px;margin:0 auto;padding:20px 16px;}
 .qt{font-family:var(--font-bold);font-weight:700;font-size:1rem;
   margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
 .ql{display:flex;flex-direction:column;gap:8px;}
+
+/* 대기열 아이템 컨테이너 */
 .qi{background:var(--gp);border:1.5px solid #c5dfc9;border-radius:10px;
   padding:12px 14px;display:flex;align-items:center;gap:12px;}
+
 .qn{width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;
   display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.82rem;flex-shrink:0;}
 .qt2{flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -250,7 +254,7 @@ main{max-width:1160px;margin:0 auto;padding:20px 16px;}
 .toast.show{transform:translateX(-50%) translateY(0);}
 .toast.err{background:var(--red);}
 
-/* 모바일 전용 UI 세부조정 */
+/* 모바일 전용 UI 세부조정 (화면 폭이 580px 이하일 때 적용) */
 @media(max-width:580px){
   /* 상단 통계 숫자 밀림 방지 - 2줄 처리 */
   .stats{grid-template-columns:repeat(2,1fr);} 
@@ -260,6 +264,28 @@ main{max-width:1160px;margin:0 auto;padding:20px 16px;}
   .mb-vs{padding-top:0;padding-bottom:6px;}
   header{padding:12px 16px;}.logo{font-size:1.2rem;}
   .tab{padding:12px 14px; font-size:.85rem;}
+  
+  /* 대기열 아이템: 요소들이 좁으면 세로로 배치되도록 수정 */
+  .qi { flex-wrap: wrap; }
+  .qt2 { 
+    /* 팀 영역(VS)이 가로 100%를 차지하게 하여 무조건 줄바꿈 생성 */
+    flex: 0 0 100%; 
+    justify-content: center; 
+    margin: 8px 0; 
+    padding: 12px 0; 
+    border-top: 1px dashed rgba(26,122,60,.2); 
+    border-bottom: 1px dashed rgba(26,122,60,.2); 
+  }
+  .qa { 
+    /* 버튼 그룹도 한 줄 전체를 차지 */
+    flex: 0 0 100%; 
+    justify-content: stretch; /* 버튼들이 가로 길이를 꽉 채우도록 */
+  }
+  .qa .btn-xs {
+    flex: 1; /* 각각의 버튼이 남은 공간을 균등 분배 */
+    padding: 10px 0; /* 터치하기 편하게 높이 증가 */
+    font-size: .85rem;
+  }
 }
 </style>
 
@@ -792,9 +818,9 @@ function renderQueue(){
         <div class="qteam">${pB.map(p=>`<div class="qp">${gi(p)}<span style="width:6px;height:6px;border-radius:50%;background:${LCOL[p.level]};display:inline-block"></span>${p.name}(${p.level})</div>`).join('')}</div>
       </div>
       <div class="qa">
-        <button class="btn-xs bxg" style="padding:6px 10px;" onclick="assignQueueItem('${q.id}')">배정</button>
-        <button class="btn-xs" style="background:#e8f0ff;color:#4a6cf7;font-weight:700;padding:6px 10px;" onclick="openEditQueue('${q.id}')">수정</button>
-        <button class="btn-xs bxr" style="padding:6px 10px;" onclick="removeQueue('${q.id}')">삭제</button>
+        <button class="btn-xs bxg" onclick="assignQueueItem('${q.id}')">배정</button>
+        <button class="btn-xs" style="background:#e8f0ff;color:#4a6cf7;font-weight:700;" onclick="openEditQueue('${q.id}')">수정</button>
+        <button class="btn-xs bxr" onclick="removeQueue('${q.id}')">삭제</button>
       </div>
     </div>`;
   }).join('');
