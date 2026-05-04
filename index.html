@@ -1,5 +1,5 @@
+```html
 <!DOCTYPE html>
-
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -481,7 +481,7 @@ let matchCourtPref=null, selMatchType='MD';
 let timers={}, tempCourts=[];
 let editQueueId=null, eqMatchType='MD';
 
-// ─── Firebase REST API (CDN 없이 fetch만 사용 — 사파리 완벽 호환) ───
+// ─── Firebase REST API (CDN 없이 fetch만 사용) ───
 const FB_URL = 'https://step-badminton-default-rtdb.asia-southeast1.firebasedatabase.app/shuttleState';
 let fbOk = false;
 let pollTimer = null;
@@ -505,9 +505,9 @@ function fbHash(obj) {
 async function fbRead() {
   try {
     const res = await fetch(FB_URL + '.json');
-    if (!res.ok) return {error: true};  // 연결 실패
+    if (!res.ok) return {error: true};
     const data = await res.json();
-    return {error: false, data: data};  // null이어도 연결 성공
+    return {error: false, data: data};
   } catch(e) { return {error: true}; }
 }
 
@@ -537,23 +537,19 @@ async function initFirebase() {
   conn.textContent = '🟢 실시간 연결됨';
 
   const data = result.data;
-  const isValid = data
-    && Array.isArray(data.players)
-    && Array.isArray(data.courts)
-    && Array.isArray(data.queue)
-    && Array.isArray(data.history)
-    && typeof data.session === 'boolean';
-
-  if (isValid) {
-    S = data;
-    S.players = S.players.map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
-    S.courts  = S.courts.map(c=>({...c, match:c.match||null}));
-    S.queue   = S.queue||[];
-    S.history = S.history||[];
+  
+  // 수정된 유효성 검사: DB에서 넘어온 데이터가 객체이기만 하면 유효 (빈 배열 삭제 대응)
+  if (data && typeof data === 'object') {
+    S.session = !!data.session;
+    S.players = (data.players || []).map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
+    S.courts  = (data.courts || S.courts).map(c=>({...c, match:c.match||null}));
+    S.queue   = data.queue || [];
+    S.history = data.history || [];
   } else {
-    // DB가 비어있거나 깨진 경우 → 초기 데이터로 저장
+    // DB가 아예 텅 비었을 때(최초 실행 시)만 초기 데이터 저장
     await fbWrite(S);
   }
+  
   lastHash = fbHash(S);
   renderAll();
 
@@ -565,9 +561,12 @@ async function initFirebase() {
     if (h !== lastHash) {
       lastHash = h;
       const val = res.data;
-      if (val && Array.isArray(val.players) && Array.isArray(val.courts)) {
-        S = val;
-        S.players = S.players.map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
+      if (val && typeof val === 'object') {
+        S.session = !!val.session;
+        S.players = (val.players || []).map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
+        S.courts  = (val.courts || S.courts).map(c=>({...c, match:c.match||null}));
+        S.queue   = val.queue || [];
+        S.history = val.history || [];
         renderAll();
       }
     }
@@ -1116,3 +1115,5 @@ renderAll();
 
 </body>
 </html>
+
+```
