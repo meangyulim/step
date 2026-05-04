@@ -488,10 +488,18 @@ let pollTimer = null;
 let lastHash = '';
 
 function fbHash(obj) {
-  const s = JSON.stringify(obj);
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-  return String(h);
+  // session 값과 주요 카운트만으로 빠르게 비교
+  try {
+    const key = JSON.stringify({
+      session: obj.session,
+      qLen: (obj.queue||[]).length,
+      hLen: (obj.history||[]).length,
+      pActive: (obj.players||[]).filter(p=>p.active).length,
+      pPlaying: (obj.players||[]).filter(p=>p.playing).length,
+      courts: (obj.courts||[]).map(c=>c.match?'1':'0').join(''),
+    });
+    return key;
+  } catch(e) { return Math.random().toString(); }
 }
 
 async function fbRead() {
@@ -570,7 +578,7 @@ function pushState() {
   renderAll();
   if (fbOk) {
     const snap = JSON.parse(JSON.stringify(S));
-    lastHash = fbHash(snap);
+    lastHash = fbHash(snap); // 내가 쓴 해시를 미리 기록
     fbWrite(snap);
   }
 }
