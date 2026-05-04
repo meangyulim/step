@@ -521,34 +521,49 @@ let timers={}, tempCourts=[];
 let _ignoreNext=false;
 let editQueueId=null, eqMatchType='MD';
 
-// ─── FIREBASE 연결 (타이밍 문제 해결) ───
+// ─── FIREBASE 연결 ───
 window._fbConnectReady = function(ok) {
   fbOk = ok;
   const conn = document.getElementById('conn');
   if (fbOk) {
     conn.className = 'ok';
     conn.textContent = '🟢 실시간 연결됨';
+    let isFirstLoad = true;
     window._fbListen((val) => {
-      if (_ignoreNext) { _ignoreNext = false; return; }
-      if (!val) { pushState(); return; }
-      S = JSON.parse(JSON.stringify(val));
-      renderAll();
+      // 첫 로드시에만 Firebase 데이터로 덮어쓰기 (이후는 내가 pushState로 씀)
+      if (isFirstLoad) {
+        isFirstLoad = false;
+        if (val) {
+          S = JSON.parse(JSON.stringify(val));
+          renderAll();
+        } else {
+          // DB가 비어있으면 현재 로컬 상태를 Firebase에 저장
+          window._fbSet(JSON.parse(JSON.stringify(S)));
+        }
+        return;
+      }
+      // 첫 로드 이후: 다른 기기에서 변경된 경우만 반영
+      // (내가 쓴 건 pushState에서 이미 로컬 렌더 완료)
+      if (val) {
+        S = JSON.parse(JSON.stringify(val));
+        renderAll();
+      }
     });
   } else {
     conn.className = 'local';
-    conn.textContent = '⚠ 로컬 모드';
+    conn.textContent = '⚠ 로컬 모드 (Firebase 미연결)';
   }
 };
 
 function pushState() {
-  const b=document.getElementById('sync-bar');
-  b.classList.add('on'); setTimeout(()=>b.classList.remove('on'),700);
-  if (fbOk) {
-    // Firebase에 저장 (다른 기기 동기화용)
-    window._fbSet(JSON.parse(JSON.stringify(S)));
-    // ★ _ignoreNext 제거 — 로컬은 바로 renderAll, 다른 기기는 리스너로 수신
+  const b = document.getElementById('sync-bar');
+  b.classList.add('on'); setTimeout(() => b.classList.remove('on'), 700);
+  // ★ 로컬 UI는 항상 즉시 업데이트 (Firebase 연결 여부 무관)
+  renderAll();
+  // Firebase에는 비동기로 저장 (실패해도 로컬은 이미 렌더됨)
+  if (fbOk && window._fbSet) {
+    try { window._fbSet(JSON.parse(JSON.stringify(S))); } catch(e) {}
   }
-  renderAll(); // 항상 즉시 로컬 UI 업데이트
 }
 
 // ─── PAGES ───
