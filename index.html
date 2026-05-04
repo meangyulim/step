@@ -818,15 +818,23 @@ function calcPenalty(tA,tB){
   return pen;
 }
 function bestCombo(p1,p2,mixed){
-  let best=null,bs=-Infinity;
+  let cands = [];
+  let seen = new Set(); // 중복 조합 필터링용
+
   if(mixed){
     for(let i=0;i<p1.length;i++)for(let j=0;j<p1.length;j++){if(i===j)continue;
       for(let k=0;k<p2.length;k++)for(let l=0;l<p2.length;l++){if(k===l)continue;
         const [m1,m2,f1,f2]=[p1[i],p1[j],p2[k],p2[l]];
+        const tA = [m1,f1], tB = [m2,f2];
+        // (A vs B) 와 (B vs A) 를 같은 조합으로 취급하도록 고유 키 생성
+        const key = [tA.map(p=>p.id).sort().join(','), tB.map(p=>p.id).sort().join(',')].sort().join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+
         const ld=Math.abs((LORD[m1.level]+LORD[f1.level])-(LORD[m2.level]+LORD[f2.level]));
-        const pen=calcPenalty([m1,f1],[m2,f2]);
+        const pen=calcPenalty(tA,tB);
         const sc=-ld*3-pen*2-(m1.games+f1.games+m2.games+f2.games)*0.1;
-        if(sc>bs){bs=sc;best={teamA:[m1,f1],teamB:[m2,f2],score:bs};}
+        cands.push({teamA:tA,teamB:tB,score:sc});
       }
     }
   } else {
@@ -834,14 +842,28 @@ function bestCombo(p1,p2,mixed){
     for(let k=0;k<p1.length;k++){if(k===i||k===j)continue;
       for(let l=k+1;l<p1.length;l++){if(l===i||l===j)continue;
         const [a1,a2,b1,b2]=[p1[i],p1[j],p1[k],p1[l]];
+        const tA = [a1,a2], tB = [b1,b2];
+        const key = [tA.map(p=>p.id).sort().join(','), tB.map(p=>p.id).sort().join(',')].sort().join('|');
+        if (seen.has(key)) continue;
+        seen.add(key);
+
         const ld=Math.abs((LORD[a1.level]+LORD[a2.level])-(LORD[b1.level]+LORD[b2.level]));
-        const pen=calcPenalty([a1,a2],[b1,b2]);
+        const pen=calcPenalty(tA,tB);
         const sc=-ld*3-pen*2-(a1.games+a2.games+b1.games+b2.games)*0.1;
-        if(sc>bs){bs=sc;best={teamA:[a1,a2],teamB:[b1,b2],score:bs};}
+        cands.push({teamA:tA,teamB:tB,score:sc});
       }
     }
   }
-  return best;
+  
+  if (!cands.length) return null;
+  cands.sort((a,b)=>b.score-a.score);
+  
+  // 최고 점수 조합과 근소한 차이(2.5점 이내)를 보이는 상위 그룹을 후보로 선정
+  const topScore = cands[0].score;
+  const topCands = cands.filter(c => c.score >= topScore - 2.5);
+  
+  // 후보군 중에서 무작위로 하나를 선택하여 반환 (매번 바뀌는 효과)
+  return topCands[Math.floor(Math.random() * topCands.length)];
 }
 
 function autoSuggest(){
