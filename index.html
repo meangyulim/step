@@ -1,5 +1,5 @@
-```html
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -66,6 +66,17 @@ main{max-width:1160px;margin:0 auto;padding:18px 14px;}
   padding:18px;color:#fff;margin-bottom:18px;box-shadow:0 4px 18px rgba(26,122,60,.28);}
 .sug-box h3{font-family:var(--font-bold);font-weight:700;font-size:1rem;margin-bottom:3px;}
 .sug-box p{font-size:.8rem;opacity:.8;margin-bottom:12px;}
+
+/* 자동매칭 유형 선택 버튼 */
+.sug-type-picker{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.sug-type-btn{
+  flex:1;min-width:70px;padding:8px 10px;border-radius:8px;border:2px solid rgba(255,255,255,.3);
+  background:rgba(255,255,255,.1);color:#fff;cursor:pointer;
+  font-family:var(--font);font-weight:700;font-size:.8rem;transition:all .15s;
+}
+.sug-type-btn:hover{background:rgba(255,255,255,.2);}
+.sug-type-btn.active{background:#fff;color:var(--green);border-color:#fff;}
+
 .sug-res{background:rgba(255,255,255,.12);border-radius:9px;padding:12px;
   margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .sug-team{background:rgba(255,255,255,.9);color:var(--text);border-radius:8px;padding:8px 11px;flex:1;min-width:110px;}
@@ -271,7 +282,13 @@ main{max-width:1160px;margin:0 auto;padding:18px 14px;}
 
   <div class="sug-box">
     <h3>🤖 스마트 매칭 추천</h3>
-    <p>급수 균형 + 안 친 상대끼리 최적 조합을 자동으로 추천합니다.</p>
+    <p>유형을 선택하거나 자동으로 최적 조합을 추천받으세요.</p>
+    <div class="sug-type-picker">
+      <button class="sug-type-btn active" data-st="AUTO" onclick="pickSugType('AUTO')">✨ 자동</button>
+      <button class="sug-type-btn" data-st="MD" onclick="pickSugType('MD')">♂ 남복</button>
+      <button class="sug-type-btn" data-st="WD" onclick="pickSugType('WD')">♀ 여복</button>
+      <button class="sug-type-btn" data-st="XD" onclick="pickSugType('XD')">⚥ 혼복</button>
+    </div>
     <div id="sug-res"></div>
     <button class="btn-sug" onclick="autoSuggest()">✨ 매칭 추천받기</button>
   </div>
@@ -480,17 +497,17 @@ let selLv='C', selGender='M', editPid=null;
 let matchCourtPref=null, selMatchType='MD';
 let timers={}, tempCourts=[];
 let editQueueId=null, eqMatchType='MD';
+let selSugType = 'AUTO'; // 자동매칭 유형 선택
 
-// ─── Firebase REST API (CDN 없이 fetch만 사용) ───
+// ─── Firebase REST API ───
 const FB_URL = 'https://step-badminton-default-rtdb.asia-southeast1.firebasedatabase.app/shuttleState';
 let fbOk = false;
 let pollTimer = null;
 let lastHash = '';
 
 function fbHash(obj) {
-  // session 값과 주요 카운트만으로 빠르게 비교
   try {
-    const key = JSON.stringify({
+    return JSON.stringify({
       session: obj.session,
       qLen: (obj.queue||[]).length,
       hLen: (obj.history||[]).length,
@@ -498,7 +515,6 @@ function fbHash(obj) {
       pPlaying: (obj.players||[]).filter(p=>p.playing).length,
       courts: (obj.courts||[]).map(c=>c.match?'1':'0').join(''),
     });
-    return key;
   } catch(e) { return Math.random().toString(); }
 }
 
@@ -506,16 +522,14 @@ async function fbRead() {
   try {
     const res = await fetch(FB_URL + '.json');
     if (!res.ok) return {error: true};
-    const data = await res.json();
-    return {error: false, data: data};
+    return {error: false, data: await res.json()};
   } catch(e) { return {error: true}; }
 }
 
 async function fbWrite(data) {
   try {
     await fetch(FB_URL + '.json', {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data)
     });
   } catch(e) {}
@@ -524,21 +538,16 @@ async function fbWrite(data) {
 async function initFirebase() {
   const conn = document.getElementById('conn');
   const result = await fbRead();
-
   if (result.error) {
-    // 진짜 연결 실패
     conn.className = 'local';
     conn.textContent = '⚠ 로컬 모드';
     return;
   }
-
   fbOk = true;
   conn.className = 'ok';
   conn.textContent = '🟢 실시간 연결됨';
 
   const data = result.data;
-  
-  // 수정된 유효성 검사: DB에서 넘어온 데이터가 객체이기만 하면 유효 (빈 배열 삭제 대응)
   if (data && typeof data === 'object') {
     S.session = !!data.session;
     S.players = (data.players || []).map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
@@ -546,14 +555,11 @@ async function initFirebase() {
     S.queue   = data.queue || [];
     S.history = data.history || [];
   } else {
-    // DB가 아예 텅 비었을 때(최초 실행 시)만 초기 데이터 저장
     await fbWrite(S);
   }
-  
   lastHash = fbHash(S);
   renderAll();
 
-  // 3초마다 폴링
   pollTimer = setInterval(async () => {
     const res = await fbRead();
     if (res.error || !res.data) return;
@@ -577,14 +583,12 @@ function pushState() {
   renderAll();
   if (fbOk) {
     const snap = JSON.parse(JSON.stringify(S));
-    lastHash = fbHash(snap); // 내가 쓴 해시를 미리 기록
+    lastHash = fbHash(snap);
     fbWrite(snap);
   }
 }
 
-// Firebase 초기화 시작
 initFirebase();
-
 
 // ─── PAGES ───
 function showPage(id) {
@@ -610,7 +614,6 @@ function updateSessionUI() {
   }
 }
 
-// ─── SESSION ───
 function toggleSession() {
   S.session=!S.session;
   if(!S.session){
@@ -624,7 +627,6 @@ function toggleSession() {
   toast(S.session?'세션 시작! 멤버 참가 등록을 해주세요.':'세션이 종료되었습니다.');
 }
 
-// ─── STATS ───
 function renderStats() {
   document.getElementById('s-tot').textContent=S.players.filter(p=>p.active).length;
   document.getElementById('s-play').textContent=S.players.filter(p=>p.playing).length;
@@ -632,7 +634,6 @@ function renderStats() {
   document.getElementById('s-done').textContent=S.history.length;
 }
 
-// ─── COURTS ───
 function renderCourts() {
   document.getElementById('courts-grid').innerHTML=S.courts.map(c=>{
     if(c.match){
@@ -686,7 +687,6 @@ function startTimer(cid,t0){
   },1000);
 }
 
-// ─── QUEUE ───
 function renderQueue(){
   const el=document.getElementById('queue-list');
   document.getElementById('q-cnt').textContent=S.queue.length?`(${S.queue.length}게임)`:'';
@@ -725,7 +725,6 @@ function moveQueue(qid,dir){
   pushState();
 }
 
-// ─── GAME ACTIONS ───
 function assignFromQueue(cid){
   if(!S.queue.length){toast('대기열이 비어있습니다.',true);return;}
   placeMatch(cid,S.queue.shift());
@@ -778,7 +777,6 @@ function removeQueue(qid){
   pushState(); toast('대기열에서 삭제');
 }
 
-// ─── QUEUE ADD ───
 function addToQueue(teamA,teamB,matchType='MD'){
   const all=[...teamA,...teamB];
   const conf=all.filter(id=>{const p=getP(id);return p&&(p.playing||p.inQueue);}).map(id=>getP(id)?.name);
@@ -790,6 +788,12 @@ function addToQueue(teamA,teamB,matchType='MD'){
 }
 
 // ─── AUTO SUGGEST ───
+function pickSugType(t) {
+  selSugType = t;
+  document.querySelectorAll('.sug-type-btn').forEach(b => b.classList.toggle('active', b.dataset.st === t));
+  document.getElementById('sug-res').innerHTML = ''; // 기존 추천 초기화
+}
+
 function calcPenalty(tA,tB){
   let pen=0;
   [[tA[0],tA[1]],[tB[0],tB[1]]].forEach(([x,y])=>{if(x&&y&&(x.opponents||[]).includes(y.id))pen+=2;});
@@ -822,21 +826,56 @@ function bestCombo(p1,p2,mixed){
   }
   return best;
 }
+
 function autoSuggest(){
   const av=S.players.filter(p=>p.active&&!p.playing&&!p.inQueue);
   const M=av.filter(p=>p.gender==='M'), F=av.filter(p=>p.gender==='F');
-  const att=[];
-  if(M.length>=2&&F.length>=2){const r=bestCombo(M,F,true);if(r)att.push({matchType:'XD',...r});}
-  if(M.length>=4){const r=bestCombo(M,M,false);if(r)att.push({matchType:'MD',...r});}
-  if(F.length>=4){const r=bestCombo(F,F,false);if(r)att.push({matchType:'WD',...r});}
-  if(!att.length){toast(`추천 불가 (참가가능: 남 ${M.length}명, 여 ${F.length}명)`,true);return;}
-  const best=att.sort((a,b)=>b.score-a.score)[0];
+
+  let best = null;
+
+  if (selSugType === 'MD') {
+    // 남자복식 강제
+    if (M.length < 4) {
+      toast(`남자복식은 남자 4명 이상 필요 (현재 ${M.length}명)`, true);
+      return;
+    }
+    const r = bestCombo(M, M, false);
+    if (r) best = {matchType:'MD', ...r};
+  } else if (selSugType === 'WD') {
+    // 여자복식 강제
+    if (F.length < 4) {
+      toast(`여자복식은 여자 4명 이상 필요 (현재 ${F.length}명)`, true);
+      return;
+    }
+    const r = bestCombo(F, F, false);
+    if (r) best = {matchType:'WD', ...r};
+  } else if (selSugType === 'XD') {
+    // 혼합복식 강제
+    if (M.length < 2 || F.length < 2) {
+      toast(`혼합복식은 남2명+여2명 이상 필요 (현재 남 ${M.length}명, 여 ${F.length}명)`, true);
+      return;
+    }
+    const r = bestCombo(M, F, true);
+    if (r) best = {matchType:'XD', ...r};
+  } else {
+    // 자동: 기존 로직 — 가능한 모든 유형 중 최고 점수
+    const att=[];
+    if(M.length>=2&&F.length>=2){const r=bestCombo(M,F,true);if(r)att.push({matchType:'XD',...r});}
+    if(M.length>=4){const r=bestCombo(M,M,false);if(r)att.push({matchType:'MD',...r});}
+    if(F.length>=4){const r=bestCombo(F,F,false);if(r)att.push({matchType:'WD',...r});}
+    if(!att.length){toast(`추천 불가 (참가가능: 남 ${M.length}명, 여 ${F.length}명)`,true);return;}
+    best = att.sort((a,b)=>b.score-a.score)[0];
+  }
+
+  if (!best) { toast('추천 조합을 찾지 못했습니다.', true); return; }
+
   const {matchType,teamA,teamB}=best;
   const reasons=[];
   const all4=[...teamA,...teamB];
   let nov=0; all4.forEach((p,i)=>all4.slice(i+1).forEach(q=>{if(!(p.opponents||[]).includes(q.id))nov++;}));
   if(nov>=4)reasons.push('새로운 상대 조합');
   if(Math.abs(teamA.reduce((s,p)=>s+LORD[p.level],0)-teamB.reduce((s,p)=>s+LORD[p.level],0))<=1)reasons.push('급수 균형');
+
   const mtC=MATCH_TYPE_COLOR[matchType], mtL=MATCH_TYPES[matchType];
   const gi=p=>p.gender==='F'?'<span style="color:#ec4899">♀</span> ':'<span style="color:#3b82f6">♂</span> ';
   const taJ=JSON.stringify(teamA.map(p=>p.id)), tbJ=JSON.stringify(teamB.map(p=>p.id));
@@ -921,7 +960,6 @@ function saveMatch(){
   if(addToQueue(teamA,teamB,selMatchType))closeOv('ov-match');
 }
 
-// ─── COURT CONFIG ───
 function openOv(id){
   if(id==='ov-cfg'){tempCourts=S.courts.map(c=>({...c}));renderChips();}
   document.getElementById(id).classList.add('open');
@@ -945,7 +983,6 @@ function saveCourts(){
   toast('코트 설정 저장!');closeOv('ov-cfg');pushState();
 }
 
-// ─── PLAYERS ───
 function renderPlayers(q=''){
   document.getElementById('players-grid').innerHTML=
     S.players.filter(p=>p.name.includes(q)).map(p=>`
@@ -1005,7 +1042,6 @@ function savePlayer(){
   closeOv('ov-player');pushState();
 }
 
-// ─── QUEUE EDIT ───
 function openEditQueue(qid){
   const q=S.queue.find(x=>x.id===qid);if(!q)return;
   editQueueId=qid;eqMatchType=q.matchType||'MD';
@@ -1033,10 +1069,10 @@ function eqPopulateSelects(q,keepVals){
   const fo='<option value="">— 없음(빈자리) —</option>'+females.map(p=>`<option value="${p.id}">♀ ${p.name} (${p.level}급)${!p.active?' [비참가]':''}</option>`).join('');
   const mt=eqMatchType;
   const sets=mt==='XD'
-    ?[{id:'eq-a1',opts:mo,lbl:'남자'},{id:'eq-a2',opts:fo,lbl:'여자'},{id:'eq-b1',opts:mo,lbl:'남자'},{id:'eq-b2',opts:fo,lbl:'여자'}]
+    ?[{id:'eq-a1',opts:mo},{id:'eq-a2',opts:fo},{id:'eq-b1',opts:mo},{id:'eq-b2',opts:fo}]
     :mt==='MD'
-      ?[{id:'eq-a1',opts:mo,lbl:'선수1'},{id:'eq-a2',opts:mo,lbl:'선수2'},{id:'eq-b1',opts:mo,lbl:'선수1'},{id:'eq-b2',opts:mo,lbl:'선수2'}]
-      :[{id:'eq-a1',opts:fo,lbl:'선수1'},{id:'eq-a2',opts:fo,lbl:'선수2'},{id:'eq-b1',opts:fo,lbl:'선수1'},{id:'eq-b2',opts:fo,lbl:'선수2'}];
+      ?[{id:'eq-a1',opts:mo},{id:'eq-a2',opts:mo},{id:'eq-b1',opts:mo},{id:'eq-b2',opts:mo}]
+      :[{id:'eq-a1',opts:fo},{id:'eq-a2',opts:fo},{id:'eq-b1',opts:fo},{id:'eq-b2',opts:fo}];
   sets.forEach(s=>{document.getElementById(s.id).innerHTML=s.opts;});
   const lmap={MD:'남자 선수만',WD:'여자 선수만',XD:'팀A(남+여) / 팀B(남+여)'};
   document.getElementById('eq-team-label').textContent=`선수 구성 — ${lmap[mt]}`;
@@ -1081,7 +1117,6 @@ function saveEditQueue(){
   toast('대기열 수정 완료!');closeOv('ov-editq');pushState();
 }
 
-// ─── HISTORY ───
 function renderHistory(){
   const el=document.getElementById('hist-list');
   if(!S.history.length){el.innerHTML='<div style="text-align:center;padding:26px;color:var(--muted);">아직 완료된 경기가 없습니다.</div>';return;}
@@ -1099,7 +1134,6 @@ function renderHistory(){
   }).join('');
 }
 
-// ─── UTILS ───
 function getP(id){return S.players.find(p=>p.id===id);}
 let _tt;
 function toast(msg,err=false){
@@ -1109,11 +1143,8 @@ function toast(msg,err=false){
   _tt=setTimeout(()=>t.classList.remove('show'),2700);
 }
 
-// 즉시 렌더 (Firebase 연결 전에도 UI 동작)
 renderAll();
 </script>
 
 </body>
 </html>
-
-```
