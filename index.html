@@ -7,32 +7,6 @@
 <title>STEP — 코트 매칭</title>
 <link href="https://fonts.googleapis.com/css2?family=Gmarket+Sans:wght@300;500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 
-<!-- Firebase SDK -->
-
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
-<script>
-// Firebase 초기화 (compat 버전 — module 타이밍 문제 없음)
-try {
-  firebase.initializeApp({
-    apiKey: "AIzaSyCUeRduirTQ_9LhsSz-r7fsMfsSqm4PBh4",
-    authDomain: "step-badminton.firebaseapp.com",
-    databaseURL: "https://step-badminton-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "step-badminton",
-    storageBucket: "step-badminton.firebasestorage.app",
-    messagingSenderId: "744276641117",
-    appId: "1:744276641117:web:d28b78e8b0d965599e54b4"
-  });
-  window._db = firebase.database();
-  window._fbOk = true;
-} catch(e) {
-  console.warn('Firebase 실패:', e.message);
-  window._fbOk = false;
-}
-</script>
-
 <style>
 :root{
   --bg:#f0f4f0;--green:#1a7a3c;--gl:#2da05a;--gp:#e8f5ec;
