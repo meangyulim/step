@@ -497,9 +497,10 @@ function fbHash(obj) {
 async function fbRead() {
   try {
     const res = await fetch(FB_URL + '.json');
-    if (!res.ok) return null;
-    return await res.json();
-  } catch(e) { return null; }
+    if (!res.ok) return {error: true};  // 연결 실패
+    const data = await res.json();
+    return {error: false, data: data};  // null이어도 연결 성공
+  } catch(e) { return {error: true}; }
 }
 
 async function fbWrite(data) {
@@ -514,35 +515,53 @@ async function fbWrite(data) {
 
 async function initFirebase() {
   const conn = document.getElementById('conn');
-  const data = await fbRead();
-  if (data === null) {
-    // 연결 실패 — 로컬 모드
+  const result = await fbRead();
+
+  if (result.error) {
+    // 진짜 연결 실패
     conn.className = 'local';
     conn.textContent = '⚠ 로컬 모드';
     return;
   }
+
   fbOk = true;
   conn.className = 'ok';
   conn.textContent = '🟢 실시간 연결됨';
-  if (data && Object.keys(data).length > 0) {
+
+  const data = result.data;
+  const isValid = data
+    && Array.isArray(data.players)
+    && Array.isArray(data.courts)
+    && Array.isArray(data.queue)
+    && Array.isArray(data.history)
+    && typeof data.session === 'boolean';
+
+  if (isValid) {
     S = data;
-    S.players = (S.players||[]).map(p=>({...p, opponents:p.opponents||[]}));
-    lastHash = fbHash(S);
-    renderAll();
+    S.players = S.players.map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
+    S.courts  = S.courts.map(c=>({...c, match:c.match||null}));
+    S.queue   = S.queue||[];
+    S.history = S.history||[];
   } else {
+    // DB가 비어있거나 깨진 경우 → 초기 데이터로 저장
     await fbWrite(S);
-    lastHash = fbHash(S);
   }
-  // 3초마다 폴링으로 다른 기기 변경 감지
+  lastHash = fbHash(S);
+  renderAll();
+
+  // 3초마다 폴링
   pollTimer = setInterval(async () => {
-    const val = await fbRead();
-    if (!val) return;
-    const h = fbHash(val);
+    const res = await fbRead();
+    if (res.error || !res.data) return;
+    const h = fbHash(res.data);
     if (h !== lastHash) {
       lastHash = h;
-      S = val;
-      S.players = (S.players||[]).map(p=>({...p, opponents:p.opponents||[]}));
-      renderAll();
+      const val = res.data;
+      if (val && Array.isArray(val.players) && Array.isArray(val.courts)) {
+        S = val;
+        S.players = S.players.map(p=>({...p, opponents:p.opponents||[], active:!!p.active, playing:!!p.playing, inQueue:!!p.inQueue}));
+        renderAll();
+      }
     }
   }, 3000);
 }
