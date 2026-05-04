@@ -479,17 +479,86 @@ let qidSeq=1, pidSeq=9;
 let selLv='C', selGender='M', editPid=null;
 let matchCourtPref=null, selMatchType='MD';
 let timers={}, tempCourts=[];
-let _ignoreNext=false;
 let editQueueId=null, eqMatchType='MD';
 
-// ─── Firebase 없는 순수 로컬 버전 ───
+// ─── Firebase REST API (CDN 없이 fetch만 사용 — 사파리 완벽 호환) ───
+const FB_URL = 'https://step-badminton-default-rtdb.asia-southeast1.firebasedatabase.app/shuttleState';
 let fbOk = false;
-// (Firebase 연결시 아래 initFb() 함수가 나중에 호출됨)
+let pollTimer = null;
+let lastHash = '';
 
+function fbHash(obj) {
+  const s = JSON.stringify(obj);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return String(h);
+}
+
+async function fbRead() {
+  try {
+    const res = await fetch(FB_URL + '.json');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
+}
+
+async function fbWrite(data) {
+  try {
+    await fetch(FB_URL + '.json', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+  } catch(e) {}
+}
+
+async function initFirebase() {
+  const conn = document.getElementById('conn');
+  const data = await fbRead();
+  if (data === null) {
+    // 연결 실패 — 로컬 모드
+    conn.className = 'local';
+    conn.textContent = '⚠ 로컬 모드';
+    return;
+  }
+  fbOk = true;
+  conn.className = 'ok';
+  conn.textContent = '🟢 실시간 연결됨';
+  if (data && Object.keys(data).length > 0) {
+    S = data;
+    S.players = (S.players||[]).map(p=>({...p, opponents:p.opponents||[]}));
+    lastHash = fbHash(S);
+    renderAll();
+  } else {
+    await fbWrite(S);
+    lastHash = fbHash(S);
+  }
+  // 3초마다 폴링으로 다른 기기 변경 감지
+  pollTimer = setInterval(async () => {
+    const val = await fbRead();
+    if (!val) return;
+    const h = fbHash(val);
+    if (h !== lastHash) {
+      lastHash = h;
+      S = val;
+      S.players = (S.players||[]).map(p=>({...p, opponents:p.opponents||[]}));
+      renderAll();
+    }
+  }, 3000);
+}
 
 function pushState() {
   renderAll();
+  if (fbOk) {
+    const snap = JSON.parse(JSON.stringify(S));
+    lastHash = fbHash(snap);
+    fbWrite(snap);
+  }
 }
+
+// Firebase 초기화 시작
+initFirebase();
+
 
 // ─── PAGES ───
 function showPage(id) {
